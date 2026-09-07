@@ -54,20 +54,6 @@ facility that does not exist yet.
 Results are a planning estimate, not a guaranteed bill. Actual consumption also depends on
 equipment, occupancy and operating hours, which are not inputs here.
 
-## The in-browser model is the same model
-
-`export_web_model.py` flattens the 300 trees into arrays the interface can walk directly, then
-checks its own output against the real model before writing anything. Deviation on the last export
-was **0.000e+00 kWh** across 2,000 random inputs, and an end-to-end comparison of the browser
-against the Python service agreed to 1e-10 kWh on the annual figure with the hourly curves
-identical.
-
-Re-run it after any change to the model or the climate data:
-
-```bash
-python export_web_model.py
-```
-
 ## Weather
 
 Monthly normals for 21 Saudi cities across all 13 regions, from the Open-Meteo ERA5 archive
