@@ -1,0 +1,1214 @@
+/* ==========================================================================
+   Estidama visual system
+
+   Dark instrument panel over a live WebGL field. Two typefaces only:
+   Inter Tight for language, IBM Plex Mono for anything measured.
+   Every number on the page is monospaced and tabular so it does not
+   jitter while it animates.
+   ========================================================================== */
+
+:root {
+  --ink: #0a0f11;
+  --ink-deep: #060a0b;
+
+  --signal: #35e8ae; /* the green that means electricity here */
+  --cool: #3fb6f2;
+  --warm: #ffcf7a;
+
+  --text: #e9f4f0;
+  --text-dim: #a7bdb8;
+  --text-faint: #6f8783;
+
+  --line: rgba(146, 224, 205, 0.13);
+  --line-strong: rgba(146, 224, 205, 0.26);
+  --surface: rgba(7, 17, 18, 0.66);
+  --surface-raised: rgba(11, 24, 25, 0.78);
+
+  --font-ui: 'Inter Tight', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --radius: 3px;
+  --shell: 1240px;
+
+  --mark-back: #2ec7e6;
+  --mark-front: #cfe6ff;
+
+  /* Surfaces and accents that used to be hard-coded for the dark ground. */
+  --field-bg: rgba(255, 255, 255, 0.028);
+  --menu-bg: rgba(6, 15, 16, 0.97);
+  --track: rgba(255, 255, 255, 0.03);
+  --hint: rgba(146, 224, 205, 0.4);
+  --accent-soft: rgba(53, 232, 174, 0.05);
+  --accent-tint: rgba(53, 232, 174, 0.11);
+  --accent-tint-strong: rgba(53, 232, 174, 0.13);
+  --accent-glow: rgba(53, 232, 174, 0.55);
+  --curve-glow: rgba(53, 232, 174, 0.4);
+  --signal-fade: rgba(53, 232, 174, 0.3);
+  --cool-fade: rgba(63, 182, 242, 0.28);
+  --warm-line: rgba(255, 207, 122, 0.32);
+  --alert-line: rgba(255, 138, 118, 0.35);
+  --alert-bg: rgba(255, 106, 84, 0.09);
+  --alert-text: #ffb3a4;
+
+  color-scheme: dark;
+}
+
+/* --------------------------------------------------------------------------
+   Light theme
+   Only the tokens change. Every rule below this block is written against them,
+   so nothing else needs a light variant. The star keeps its two-tone identity
+   and simply swaps which arm carries the dark value, so it never disappears
+   into the ground it sits on.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='light'] {
+  --ink: #eef3f1;
+  --ink-deep: #ffffff;
+
+  --signal: #046f4d;
+  --cool: #0b6f9e;
+  --warm: #9a6612;
+
+  --text: #0a1a17;
+  --text-dim: #3d534e;
+  --text-faint: #52685e;
+
+  --line: rgba(10, 60, 50, 0.16);
+  --line-strong: rgba(10, 60, 50, 0.3);
+  --surface: rgba(255, 255, 255, 0.74);
+  --surface-raised: rgba(255, 255, 255, 0.9);
+
+  --mark-back: #0d8aa8;
+  --mark-front: #14225e;
+
+  /* Same roles, inverted. Tints darken the page instead of lightening it. */
+  --field-bg: rgba(10, 60, 50, 0.045);
+  --menu-bg: rgba(255, 255, 255, 0.985);
+  --track: rgba(10, 60, 50, 0.07);
+  --hint: rgba(10, 60, 50, 0.55);
+  --accent-soft: rgba(4, 111, 77, 0.07);
+  --accent-tint: rgba(4, 111, 77, 0.12);
+  --accent-tint-strong: rgba(4, 111, 77, 0.15);
+  --accent-glow: rgba(4, 111, 77, 0.35);
+  --curve-glow: rgba(4, 111, 77, 0.25);
+  --signal-fade: rgba(4, 111, 77, 0.3);
+  --cool-fade: rgba(11, 111, 158, 0.28);
+  --warm-line: rgba(154, 102, 18, 0.4);
+  --alert-line: rgba(190, 70, 50, 0.4);
+  --alert-bg: rgba(200, 70, 50, 0.08);
+  --alert-text: #94271a;
+
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+html {
+  background: var(--ink);
+}
+
+body {
+  margin: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--signal);
+  color: var(--ink-deep);
+}
+
+:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Backdrop
+   The shader owns the whole viewport. The overlay above it does two jobs:
+   pulls the shader's violet-black towards teal, and darkens the edges
+   enough for body text to stay readable over a moving image.
+   -------------------------------------------------------------------------- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+}
+
+.backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(10, 40, 40, 0) 0%, rgba(6, 12, 13, 0.72) 72%),
+    linear-gradient(180deg, rgba(6, 14, 14, 0.42) 0%, rgba(5, 10, 11, 0.88) 100%);
+  pointer-events: none;
+}
+
+/* The shader draws ink on white in light mode, so the veil has to lift with it
+   or the page reads as a dark panel behind light text. */
+:root[data-theme='light'] .backdrop::after {
+  background:
+    radial-gradient(130% 90% at 50% 0%, rgba(238, 243, 241, 0) 0%, rgba(238, 243, 241, 0.18) 80%),
+    linear-gradient(180deg, rgba(238, 243, 241, 0) 0%, rgba(238, 243, 241, 0.34) 100%);
+}
+
+.page {
+  position: relative;
+  z-index: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --------------------------------------------------------------------------
+   Top bar
+   -------------------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: var(--shell);
+  width: 100%;
+  margin: 0 auto;
+  padding: 22px 28px;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.wordmark-latin {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+
+.wordmark-arabic {
+  font-size: 15px;
+  color: var(--text-faint);
+  transition: color 0.3s ease;
+}
+
+.wordmark:hover .wordmark-arabic {
+  color: var(--signal);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 11px 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 100px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 0 0 var(--accent-glow);
+}
+
+/* Pulses only while a forecast is in flight. */
+.chip-dot[data-pending] {
+  animation: pulse 1.1s ease-out infinite;
+}
+
+@keyframes pulse {
+  to {
+    box-shadow: 0 0 0 7px rgba(53, 232, 174, 0);
+  }
+}
+
+/* The eight-point star. Two four-point arms, painted from theme tokens. */
+.mark {
+  display: block;
+  flex: none;
+}
+
+.mark-back {
+  fill: var(--mark-back);
+}
+
+.mark-front {
+  fill: var(--mark-front);
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 100px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.theme-toggle:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.theme-toggle svg {
+  color: var(--signal);
+}
+
+/* --------------------------------------------------------------------------
+   Hero
+   -------------------------------------------------------------------------- */
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: 0 28px 96px;
+}
+
+.hero {
+  padding: clamp(48px, 9vw, 104px) 0 clamp(40px, 6vw, 72px);
+  max-width: 720px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--signal);
+  margin-bottom: 20px;
+}
+
+.hero-title {
+  font-size: clamp(2.9rem, 7.4vw, 5.1rem);
+  letter-spacing: -0.05em;
+  font-weight: 600;
+}
+
+.hero-lede {
+  margin-top: 24px;
+  max-width: 62ch;
+  font-size: clamp(1rem, 1.35vw, 1.1rem);
+  color: var(--text-dim);
+}
+
+.hero-lede + .hero-lede {
+  margin-top: 16px;
+}
+
+.hero-lede strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* One quiet line of provenance, set apart from the argument above it. */
+.hero-note {
+  margin-top: 34px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  max-width: 52ch;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+.stat dt {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+
+.stat dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* --------------------------------------------------------------------------
+   Console: inputs on the left, the answer on the right
+   -------------------------------------------------------------------------- */
+
+.console {
+  display: grid;
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  backdrop-filter: blur(22px) saturate(1.25);
+  padding: 26px;
+}
+
+.panel-form {
+  position: sticky;
+  top: 22px;
+}
+
+.panel-head {
+  padding-bottom: 20px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-head h2 {
+  font-size: 20px;
+}
+
+.panel-head p {
+  margin-top: 7px;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.panel-result {
+  transition: opacity 0.25s ease;
+}
+
+.panel-result.is-pending {
+  opacity: 0.62;
+}
+
+.panel-empty {
+  padding: 80px 0;
+  text-align: center;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.alert {
+  padding: 11px 13px;
+  border: 1px solid var(--alert-line);
+  border-radius: var(--radius);
+  background: var(--alert-bg);
+  color: var(--alert-text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.alert-quiet {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--text-faint);
+}
+
+/* --------------------------------------------------------------------------
+   Form controls
+   -------------------------------------------------------------------------- */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.field-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* The hint carries variable-length text (a region name), so it truncates
+   rather than pushing the label onto a second line and misaligning the row. */
+.field-hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  color: var(--hint);
+}
+
+/* Shared shell for the text and number inputs. */
+.combobox,
+.numberfield {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--field-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease;
+}
+
+.combobox:hover,
+.numberfield:hover {
+  border-color: var(--line-strong);
+}
+
+.combobox:focus-within,
+.numberfield:focus-within {
+  border-color: var(--signal);
+  background: var(--accent-soft);
+}
+
+.combobox.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.combobox-input,
+.numberfield-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  outline: none;
+}
+
+.numberfield-input {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+
+.numberfield-input::-webkit-outer-spin-button,
+.numberfield-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.numberfield-unit {
+  padding-right: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.combobox-input::placeholder {
+  color: var(--text-dim);
+  opacity: 1;
+}
+
+.combobox-toggle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.combobox.is-open .combobox-toggle {
+  transform: rotate(180deg);
+  color: var(--signal);
+}
+
+.combobox-list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  max-height: 268px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  background: var(--menu-bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.6);
+  animation: drop 0.14s ease-out;
+}
+
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+}
+
+.combobox-option {
+  padding: 7px 10px;
+  border-radius: 2px;
+  font-size: 13.5px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.combobox-option.is-active {
+  background: var(--accent-tint);
+  color: var(--text);
+}
+
+.combobox-option.is-selected {
+  color: var(--signal);
+}
+
+.combobox-empty {
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.combobox-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.combobox-list::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 4px;
+}
+
+/* Segmented control */
+
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--field-bg);
+}
+
+.segment {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.segment:hover {
+  color: var(--text);
+}
+
+.segment.is-active {
+  background: var(--accent-tint-strong);
+  color: var(--signal);
+}
+
+/* Slider */
+
+/* A toggle that changes what a chart shows, not what the model is asked. */
+.segmented-mini {
+  padding: 2px;
+  border-radius: 100px;
+}
+
+.segmented-mini .segment {
+  padding: 4px 11px;
+  border-radius: 100px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+.slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.slider-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 2px;
+  background: var(--line-strong);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--signal);
+  border: 0;
+  box-shadow: 0 0 12px var(--accent-glow);
+  transition: transform 0.15s ease;
+}
+
+.slider-input:active::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+
+.slider-input::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--signal);
+  border: 0;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* Marks are placed by value, not spread evenly, so they line up with the
+   handle position they actually represent. */
+.slider-marks {
+  position: relative;
+  height: 13px;
+}
+
+.slider-mark {
+  position: absolute;
+  transform: translateX(-50%);
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.slider-mark:hover {
+  color: var(--signal);
+}
+
+/* Disclosure */
+
+.disclosure {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.disclosure-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  cursor: pointer;
+  text-align: left;
+}
+
+.disclosure-toggle:hover {
+  color: var(--text);
+}
+
+.disclosure-chevron {
+  display: inline-block;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--signal);
+  transition: transform 0.2s ease;
+}
+
+.disclosure-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.disclosure-summary {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.disclosure-summary em {
+  color: var(--warm);
+  font-style: normal;
+}
+
+.disclosure-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 16px;
+  animation: drop 0.18s ease-out;
+}
+
+.disclosure-note {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  line-height: 1.5;
+}
+
+.link-button {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-bottom: 1px solid var(--line-strong);
+  font-size: 12.5px;
+  color: var(--signal);
+  cursor: pointer;
+}
+
+/* --------------------------------------------------------------------------
+   Results
+   -------------------------------------------------------------------------- */
+
+.readouts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.readout-value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.readout-number {
+  font-family: var(--font-mono);
+  font-size: clamp(2.1rem, 4.4vw, 3.1rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text);
+}
+
+.readout-unit {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--signal);
+}
+
+.readout-caption {
+  margin-top: 9px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+/* Explains what the yearly number covers, so the day toggle above cannot be
+   read as "the whole year is weekends". */
+.scope-note {
+  margin-top: 16px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin: 22px 0 0;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.stats .stat dd {
+  font-size: 13.5px;
+}
+
+.uncertainty {
+  margin-top: 20px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+  border-left: 1px solid var(--line-strong);
+  padding-left: 13px;
+}
+
+/* --------------------------------------------------------------------------
+   Charts
+   -------------------------------------------------------------------------- */
+
+.chart {
+  margin: 26px 0 0;
+}
+
+.chart-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 12px;
+}
+
+/* Push the live readout to the far end, whatever sits before it. */
+.chart-head .chart-readout {
+  margin-left: auto;
+}
+
+.chart-title {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.chart-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--hint);
+}
+
+.chart-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-readout-hour {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.chart-readout-value {
+  font-size: 18px;
+  color: var(--signal);
+}
+
+.chart-readout-unit {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.chart-readout-tag {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--warm);
+  border: 1px solid var(--warm-line);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
+
+.chart-svg {
+  display: block;
+  width: 100%;
+  height: 260px;
+  overflow: visible;
+  cursor: crosshair;
+}
+
+.chart-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart-night {
+  fill: var(--track);
+}
+
+.chart-axis {
+  fill: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.chart-line {
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 7px var(--curve-glow));
+}
+
+.chart-cursor {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.chart-dot {
+  fill: var(--signal);
+  stroke: var(--ink-deep);
+  stroke-width: 2;
+}
+
+/* Monthly bars */
+
+.months {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 4px;
+  height: 92px;
+}
+
+.month {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.month-track {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  background: var(--track);
+  border-radius: 1px;
+}
+
+.month-bar {
+  width: 100%;
+  min-height: 2px;
+  background: linear-gradient(180deg, var(--cool), var(--cool-fade));
+  border-radius: 1px;
+  transition: background 0.25s ease;
+}
+
+.month:hover .month-bar {
+  background: linear-gradient(180deg, var(--signal), var(--signal-fade));
+}
+
+.month.is-selected .month-bar {
+  background: linear-gradient(180deg, var(--signal), var(--signal-fade));
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+
+.month-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-faint);
+}
+
+.month.is-selected .month-label {
+  color: var(--signal);
+}
+
+/* --------------------------------------------------------------------------
+   Closing notes
+   -------------------------------------------------------------------------- */
+
+.notes {
+  margin-top: 96px;
+  padding-top: 34px;
+  border-top: 1px solid var(--line);
+}
+
+.notes-title {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  max-width: 16ch;
+}
+
+.notes-lede {
+  margin-top: 16px;
+  max-width: 56ch;
+  font-size: 14.5px;
+  color: var(--text-dim);
+}
+
+/* Two columns of term and definition. The term sits in the accent colour so
+   the list can be skimmed for the one word the reader came for. */
+.glossary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 48px;
+  margin: 34px 0 0;
+}
+
+.glossary > div {
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+
+.glossary dt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--signal);
+  margin-bottom: 8px;
+}
+
+.glossary dd {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+.notes-footnote {
+  margin-top: 30px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  max-width: var(--shell);
+  width: 100%;
+  margin: 0 auto;
+  padding: 22px 28px 34px;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+/* --------------------------------------------------------------------------
+   Narrower screens
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 1000px) {
+  .console {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-form {
+    position: static;
+  }
+
+  .glossary {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  main,
+  .topbar,
+  .footer {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .panel {
+    padding: 20px;
+  }
+
+  .row-2,
+  .readouts {
+    grid-template-columns: 1fr;
+  }
+
+  .stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .chart-svg {
+    height: 210px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
