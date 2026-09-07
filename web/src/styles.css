@@ -851,8 +851,8 @@ main {
 
 .readouts {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 14px;
   padding-bottom: 24px;
   border-bottom: 1px solid var(--line);
 }
@@ -865,7 +865,7 @@ main {
 
 .readout-number {
   font-family: var(--font-mono);
-  font-size: clamp(2.1rem, 4.4vw, 3.1rem);
+  font-size: clamp(1.75rem, 3.4vw, 2.6rem);
   font-weight: 500;
   letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;

@@ -432,16 +432,23 @@ export default function App() {
           <div className={`panel panel-result${pending ? ' is-pending' : ''}`}>
             {result ? (
               <>
+                {/* The three headline numbers sit together. The readouts on the
+                    charts below are hover detail, not results in their own right. */}
                 <div className="readouts">
                   <Readout value={result.annual_kwh} unit="kWh" caption="Electricity per year" />
                   <Readout value={result.annual_cost} unit="SAR" caption="Cost per year" />
+                  <Readout
+                    value={result.annual_cost / 12}
+                    unit="SAR"
+                    caption="Average month"
+                  />
                 </div>
 
                 <p className="scope-note">
-                  The yearly figures above cover a full calendar year, every weekday and every
-                  weekend, in the real proportion each month contains. The curve below is one
-                  representative {dayType === WEEKDAY ? 'weekday' : 'weekend day'} in{' '}
-                  {MONTH_NAMES[month - 1]}.
+                  Figures cover a full calendar year, every weekday and every weekend, in the
+                  real proportion each month contains. The two charts below break that year down:
+                  one representative {dayType === WEEKDAY ? 'weekday' : 'weekend day'} in{' '}
+                  {MONTH_NAMES[month - 1]}, then the bill month by month.
                 </p>
 
                 <LoadCurve
