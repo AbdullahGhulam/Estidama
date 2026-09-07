@@ -955,6 +955,8 @@ main {
 .chart-readout {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 7px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -1078,6 +1080,14 @@ main {
 
 .month.is-selected .month-label {
   color: var(--signal);
+}
+
+/* The spread across the year, so budgeting does not need a hover. */
+.months-summary {
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-faint);
 }
 
 /* --------------------------------------------------------------------------

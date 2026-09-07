@@ -464,7 +464,12 @@ export default function App() {
                   <Stat label="Intensity" value={`${result.eui.toFixed(0)} kWh/m²·yr`} />
                 </dl>
 
-                <MonthlyBars monthly={result.monthly} selected={month} onSelect={setMonth} />
+                <MonthlyBars
+                  monthly={result.monthly}
+                  selected={month}
+                  onSelect={setMonth}
+                  tariff={tariff}
+                />
 
                 <p className="uncertainty">
                   A planning estimate. Actual consumption also depends on equipment, occupancy and
