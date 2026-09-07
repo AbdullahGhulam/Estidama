@@ -5,7 +5,7 @@ Estimates what a facility will cost to run in electricity, before it is built.
 Describe the building (what it is for, how big, where it stands) and get its hourly demand curve,
 a month by month breakdown, the annual kWh, and the annual bill.
 
-**Live: _add the Pages URL here after the first deploy_**
+**Live: https://abdullahghulam.github.io/Estidama/**
 
 The published site needs no server. The model runs in the visitor's browser.
 
