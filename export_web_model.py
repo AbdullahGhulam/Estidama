@@ -130,11 +130,39 @@ def sample_rows(count: int) -> np.ndarray:
     ).astype(np.float64)
 
 
+def write_bundle(config: dict, categories: dict) -> None:
+    bundle = {
+        "features": config["features"],
+        "category_levels": config["category_levels"],
+        "unseen_category_code": config.get("unseen_category_code", -1),
+        "usages": config["category_levels"]["primaryspaceusage"],
+        "sub_usages": [
+            label
+            for label in config["category_levels"]["sub_primaryspaceusage"]
+            if label not in set(categories.get("hidden_variants", []))
+        ],
+        "tree": categories["tree"],
+        "defaults": categories["defaults"],
+        "climate": climate.presets(),
+        "scores": backend.MODEL_SCORES,
+    }
+    (OUT / "bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+
+
 def main() -> None:
-    estimator = joblib.load(backend.MODEL_FILE)
     config = backend.config()
     categories = backend.category_tree()
+    OUT.mkdir(parents=True, exist_ok=True)
 
+    # The category lists and climate data change far more often than the model
+    # does, and refreshing them does not need the estimator in memory.
+    if "--bundle-only" in sys.argv:
+        write_bundle(config, categories)
+        print(f"bundle: {(OUT / 'bundle.json').stat().st_size / 1e6:.2f} MB "
+              f"(trees left untouched)")
+        return
+
+    estimator = joblib.load(backend.MODEL_FILE)
     print(f"model:  {backend.MODEL_FILE.name}")
     trees = flatten(estimator.booster_.dump_model())
     print(f"trees:  {len(trees['roots'])}, {len(trees['feature'])} splits, "
@@ -148,21 +176,8 @@ def main() -> None:
     if worst > TOLERANCE:
         raise SystemExit(f"Flattened trees disagree by {worst} kWh. Not exporting.")
 
-    OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "trees.json").write_text(json.dumps(trees), encoding="utf-8")
-
-    bundle = {
-        "features": config["features"],
-        "category_levels": config["category_levels"],
-        "unseen_category_code": config.get("unseen_category_code", -1),
-        "usages": config["category_levels"]["primaryspaceusage"],
-        "sub_usages": config["category_levels"]["sub_primaryspaceusage"],
-        "tree": categories["tree"],
-        "defaults": categories["defaults"],
-        "climate": climate.presets(),
-        "scores": backend.MODEL_SCORES,
-    }
-    (OUT / "bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+    write_bundle(config, categories)
 
     for name in ("trees.json", "bundle.json"):
         print(f"wrote:  {name}  {(OUT / name).stat().st_size / 1e6:.2f} MB")

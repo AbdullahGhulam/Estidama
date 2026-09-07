@@ -100,6 +100,57 @@ One simplification: a single temperature is used for all 24 hours of a day, so t
 swing is flattened. Adding a diurnal curve would sharpen the afternoon peak, at the cost of one
 more assumed value.
 
+### Known model behaviour, found by sweeping every input
+
+None of these are bugs in this app. They are properties of the trained model, and they are all
+reachable from the interface, so know them before a demo.
+
+**Floor area is not monotonic, and this is the big one.** Sweeping 166 sizes from 50 to 200,000
+sqm found 42 points where making the building *larger* lowered the prediction. For an office at
+725 sqm the model says 142,505 kWh/yr; at 750 sqm it says 26,100; at 800 it says 399,238. Every
+facility type shows it, with worst drops of 67% to 83%:
+
+| Type | Worst drop | Between |
+|---|---|---|
+| Education | 82.9% | 12,000 to 12,200 sqm |
+| Warehouse/storage | 82.0% | 9,600 to 9,800 sqm |
+| Office | 77.9% | 2,600 to 2,800 sqm |
+| Retail | 72.3% | 9,600 to 9,800 sqm |
+| Healthcare | 67.4% | 2,800 to 3,000 sqm |
+
+Floor area is the primary control and it has a slider, so this is the misbehaviour a visitor is
+most likely to trip over. The fix is `monotone_constraints` on `sqm` at training time, which
+forces the prediction to be non-decreasing in area. That changes the selected model, so it is a
+team decision.
+
+**Very small buildings give absurd intensity.** At 50 sqm an office comes out at 1,538 kWh/m²/yr
+against a median of 163 across all types. The model has almost no training data down there. The
+number field already floors at 50 and the slider at 100; treat anything under a few hundred square
+metres as out of range.
+
+**Sparse categories are unreliable.** Chapel predicts 373 kWh/m²/yr while Worship Facility, the
+same kind of building, predicts 42.6. Data Center predicts 331 where real data centres run five to
+ten times that. These subtypes carry one or two buildings each in training.
+
+### Duplicate category labels, and why they were hidden
+
+BDG2 carries the same subtype under several spellings, and each one was trained as its own integer
+code on a handful of buildings. They do not merely look untidy, they predict differently:
+
+| Pair | Buildings | Disagreement |
+|---|---|---|
+| Ice Arena / Ice arena | 2 / 1 | **90.9%** |
+| Data Center / Data Centre | 1 / 1 | 17.2% |
+| Residence Hall / "Residence Hall	" | 42 / 2 | 6.1% |
+
+A visitor picking the lowercase spelling of the same words would get a wildly different answer, by
+coincidence. `_hidden_variants` in `api/model.py` folds each group and offers only the label held
+by the most real buildings, so 96 subtypes are offered out of 99 trained. The model and its codes
+are untouched; only the choice presented is cleaned.
+
+Labels containing a comma ("Office, Fire Stations", "Park, Community Centers") are left alone.
+They look odd but they are distinct values in the source data, not spelling accidents.
+
 ### Temperature does not always move cost upward, and that is the model
 
 Raising air temperature above roughly 20 C raises predicted consumption, as cooling load should.

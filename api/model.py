@@ -57,15 +57,23 @@ MODEL_SCORES = {
 
 
 @lru_cache(maxsize=1)
-def _load():
+def config() -> dict:
+    """Feature order and category levels.
+
+    Deliberately independent of the estimator: the category lists drive the
+    interface and the web export, and neither of those needs the model in
+    memory to be built.
+    """
+    if not CONFIG_FILE.exists():
+        raise FileNotFoundError(f"Feature config not found: {CONFIG_FILE}")
+    return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=1)
+def _estimator():
     if not MODEL_FILE.exists():
         raise FileNotFoundError(f"Model not found: {MODEL_FILE}")
-    config = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-    return joblib.load(MODEL_FILE), config
-
-
-def config() -> dict:
-    return _load()[1]
+    return joblib.load(MODEL_FILE)
 
 
 METADATA_FILE = _asset(
@@ -91,6 +99,43 @@ def _pair_counts() -> pd.DataFrame | None:
     return frame.dropna(subset=columns).groupby(columns).size().reset_index(name="n")
 
 
+def _variant_key(label: str) -> str:
+    """Fold labels that name the same thing into one key.
+
+    BDG2 carries the same subtype under several spellings: "Data Center" and
+    "Data Centre", "Ice Arena" and "Ice arena", "Residence Hall" and the same
+    string with a trailing tab. Each one was trained as its own integer code on
+    a handful of buildings, so they do not merely look untidy in a dropdown,
+    they predict differently. Ice Arena and Ice arena disagree by 91%.
+    """
+    return " ".join(label.split()).casefold().replace("centre", "center")
+
+
+def _hidden_variants(levels: list[str], counts) -> set[str]:
+    """Variant spellings to keep out of the interface.
+
+    The survivor of each group is the one held by the most real buildings, so
+    the offered option is the one the model saw most evidence for. Ties fall to
+    whichever appears first in the trained level list, which is stable.
+    """
+    if counts is None:
+        return set()
+
+    per_label = counts.groupby("sub_primaryspaceusage")["n"].sum()
+
+    groups: dict[str, list[str]] = {}
+    for label in levels:
+        groups.setdefault(_variant_key(label), []).append(label)
+
+    hidden = set()
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        best = max(members, key=lambda name: (int(per_label.get(name, 0)), -levels.index(name)))
+        hidden.update(set(members) - {best})
+    return hidden
+
+
 @lru_cache(maxsize=1)
 def category_tree() -> dict:
     """Subtypes per facility type, plus the subtype to select by default.
@@ -103,10 +148,13 @@ def category_tree() -> dict:
     known_subs = set(levels["sub_primaryspaceusage"])
 
     counts = _pair_counts()
+    hidden = _hidden_variants(levels["sub_primaryspaceusage"], counts)
+
     tree: dict[str, list[str]] = {}
     defaults: dict[str, str] = {}
 
     if counts is not None:
+        counts = counts[~counts["sub_primaryspaceusage"].isin(hidden)]
         # Only pairs the model was actually trained on; anything else would be
         # coded as unseen.
         counts = counts[counts["sub_primaryspaceusage"].isin(known_subs)]
@@ -130,7 +178,11 @@ def category_tree() -> dict:
             tree[usage] = [usage] if usage in known_subs else list(known_subs)[:1]
         defaults.setdefault(usage, tree[usage][0])
 
-    return {"tree": dict(sorted(tree.items())), "defaults": defaults}
+    return {
+        "tree": dict(sorted(tree.items())),
+        "defaults": defaults,
+        "hidden_variants": sorted(hidden),
+    }
 
 
 def _prepare(frame: pd.DataFrame) -> pd.DataFrame:
@@ -166,7 +218,7 @@ def _rows(sqm, usage, sub_usage, hours, day_of_week, month, weather):
 
 
 def _predict(frame: pd.DataFrame) -> np.ndarray:
-    model = _load()[0]
+    model = _estimator()
     # A building cannot draw negative power; the README recommends clipping.
     return np.clip(model.predict(_prepare(frame)), 0, None)
 
