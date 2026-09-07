@@ -1,36 +1,42 @@
-# Estidama — web interface
+# Estidama engineering notes
 
-A single-page interface over the final forecasting model
-(`CAPSTONE FINAL MODELS/models/SELECTED_lightgbm_tuned_mae_objective.pkl`).
+Design decisions, model behaviour and the reasoning behind them. The short version is in
+[README.md](README.md).
 
-Describe a facility that does not exist yet and get its hourly electricity demand, a twelve-month
-rollup, and the annual cost. Everything recalculates as you type — there is no submit button.
+## Two implementations of one forecast
 
-This replaces nothing. The Streamlit dashboard in `Masar-Dynamics/estidama-dashboard/` still runs
-and is untouched.
+`api/model.py` is the reference. `web/src/lib/engine.js` is a port of it that runs in the browser
+so the published site needs no server, and `export_web_model.py` is what keeps them honest: it
+flattens the 300 trees, re-implements the traversal in Python, scores it against the real model on
+2,000 random inputs, and refuses to write anything if they disagree by more than 1e-9 kWh.
 
-```
-estidama-web/
-  api/          FastAPI service that loads the model and returns forecasts
-  web/          Vite + React interface
-```
+If you change the Python, re-run the export and re-check parity. The last end-to-end comparison,
+browser against FastAPI across seven facility types, agreed to 1.16e-10 kWh on the annual figure
+with the hourly curves bit-identical.
+
+One subtlety worth keeping: the engine holds features in a `Float32Array` on purpose, because
+`model.py` casts the feature frame with `.astype("float32")` before predicting. Using doubles in
+the browser is more precise and less correct, and it moved the annual figure by up to 0.04% on
+buildings whose features sit near a split threshold.
+
+The model files live in `model/`, inside the repository, so it runs standalone. `api/model.py`
+falls back to the original `CAPSTONE FINAL MODELS/` location when working inside the capstone
+tree.
 
 ## Running it
 
-Two processes. Backend first.
+The interface alone needs nothing but Node:
 
 ```bash
-cd "estidama-web/api" && pip install -r requirements.txt && python -m uvicorn main:app --port 8000 --reload
+cd web && npm install && npm run dev
 ```
+
+To run the FastAPI service too, and point the interface at it instead of the browser model:
 
 ```bash
-cd "estidama-web/web" && npm install && npm run dev
+cd api && pip install -r requirements.txt && python -m uvicorn main:app --port 8000 --reload
+cd web && VITE_API=1 npm run dev
 ```
-
-Then open http://localhost:5173. Vite proxies `/api` to port 8000, so both must be up.
-
-Model files are read from `../../CAPSTONE FINAL MODELS/models/`, relative to `api/`. Nothing is
-copied or duplicated; move this folder and the paths in `api/model.py` need updating.
 
 ## The API
 
