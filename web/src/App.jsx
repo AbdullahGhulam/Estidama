@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Combobox from './components/Combobox';
 import GhostFibers from './components/GhostFibers';
 import LoadCurve from './components/LoadCurve';
+import { BillIcon, BoltIcon, CashIcon } from './components/Icons';
 import Mark from './components/Mark';
 import MonthlyBars from './components/MonthlyBars';
 import ThemeToggle from './components/ThemeToggle';
@@ -36,7 +37,7 @@ const compact = value =>
       ? `${(value / 1e3).toFixed(value >= 1e5 ? 0 : 1)}k`
       : value.toFixed(0);
 
-function Readout({ value, unit, caption, format = compact }) {
+function Readout({ value, unit, caption, icon, format = compact }) {
   const eased = useAnimatedNumber(value);
   return (
     <div className="readout">
@@ -44,7 +45,10 @@ function Readout({ value, unit, caption, format = compact }) {
         <span className="readout-number">{format(eased)}</span>
         <span className="readout-unit">{unit}</span>
       </div>
-      <div className="readout-caption">{caption}</div>
+      <div className="readout-caption">
+        {icon}
+        {caption}
+      </div>
     </div>
   );
 }
@@ -435,12 +439,23 @@ export default function App() {
                 {/* The three headline numbers sit together. The readouts on the
                     charts below are hover detail, not results in their own right. */}
                 <div className="readouts">
-                  <Readout value={result.annual_kwh} unit="kWh" caption="Electricity per year" />
-                  <Readout value={result.annual_cost} unit="SAR" caption="Cost per year" />
+                  <Readout
+                    value={result.annual_kwh}
+                    unit="kWh"
+                    caption="Electricity per year"
+                    icon={<BoltIcon />}
+                  />
+                  <Readout
+                    value={result.annual_cost}
+                    unit="SAR"
+                    caption="Cost per year"
+                    icon={<CashIcon />}
+                  />
                   <Readout
                     value={result.annual_cost / 12}
                     unit="SAR"
                     caption="Average month"
+                    icon={<BillIcon />}
                   />
                 </div>
 

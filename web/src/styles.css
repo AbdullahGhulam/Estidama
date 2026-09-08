@@ -880,9 +880,19 @@ main {
 }
 
 .readout-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-top: 9px;
   font-size: 12px;
   color: var(--text-faint);
+}
+
+/* Inherits the caption colour, so it is legible in both themes by
+   construction rather than by having two versions of the artwork. */
+.readout-icon {
+  flex: none;
+  color: var(--signal);
 }
 
 /* Explains what the yearly number covers, so the day toggle above cannot be
