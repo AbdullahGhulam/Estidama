@@ -1,0 +1,26 @@
+# Netlify build configuration.
+#
+# The Vite app lives in web/, not at the repository root, so `base` moves the
+# build there first. Everything below `base` is then relative to it: `publish`
+# resolves to web/dist and functions to web/netlify/functions.
+#
+# Keeping this in the repo rather than in the site's UI settings means the
+# build is reproducible and reviewable, and a fresh import needs no manual
+# configuration.
+
+[build]
+  base = "web"
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  # Netlify's default Node can lag behind what Vite 6 expects.
+  NODE_VERSION = "20"
+
+# Long-lived caching for the model payload. Vite fingerprints its own assets,
+# and these two files only change when export_web_model.py is re-run.
+[[headers]]
+  for = "/model/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
